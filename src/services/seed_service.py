@@ -1,7 +1,6 @@
 import logging
 import random
 
-from passlib.hash import bcrypt
 from sqlalchemy import func, select
 
 from src.database import async_session
@@ -17,7 +16,9 @@ from src.utils.seed_data import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PASSWORD_HASH = bcrypt.hash("password")
+from src.services.auth_service import hash_password
+
+DEFAULT_PASSWORD_HASH = hash_password("password")
 
 
 async def seed_data():
