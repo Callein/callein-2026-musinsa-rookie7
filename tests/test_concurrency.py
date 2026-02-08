@@ -14,11 +14,11 @@ async def test_enrollment_concurrency(
     test_engine, test_course, test_student, test_department
 ):
     """
-    Test 50 concurrent enrollment requests for a course with capacity 1.
-    Only 1 should succeed, 49 should fail.
+    Test 100 concurrent enrollment requests for a course with capacity 1.
+    Only 1 should succeed, 99 should fail.
     """
     
-    # 1. Setup: Create 50 students and get their tokens
+    # 1. Setup: Create 100 students and get their tokens
     password = "password"
     hashed = hash_password(password)
     
@@ -50,9 +50,9 @@ async def test_enrollment_concurrency(
         session.add(target_course)
         await session.flush()
         
-        # Create 50 students
+        # Create 100 students
         created_students = []
-        for i in range(50):
+        for i in range(100):
             s = Student(
                 name=f"ConUser{i}",
                 student_number=f"9999{i:04d}",
@@ -69,9 +69,18 @@ async def test_enrollment_concurrency(
         student_numbers = [s.student_number for s in created_students]
 
     # 2. Login to get tokens
-    # We need a dependency override to use a session from test_engine
+    # Note: We use a separate engine with a connection pool for the concurrent requests
+    # to avoid "TooManyConnectionsError" (Postgres max defaults to ~100).
+    # This simulates a real production server which would have a connection pool.
+    from sqlalchemy.ext.asyncio import create_async_engine
+    # Use same URL as conftest
+    TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/course_registration_test"
+    
+    # Pool size 20, max overflow 10. Request 31+ will wait.
+    concurrent_engine = create_async_engine(TEST_DB_URL, echo=False, pool_size=20, max_overflow=20)
+
     async def get_test_db_override():
-        async with AsyncSession(test_engine, expire_on_commit=False) as s:
+        async with AsyncSession(concurrent_engine, expire_on_commit=False) as s:
             yield s
             
     app.dependency_overrides[get_db] = get_test_db_override
@@ -87,9 +96,6 @@ async def test_enrollment_concurrency(
 
     # 3. Concurrent Enrollment Requests
     async def request_enroll(token):
-        # Each request must have its own dependency scope effectively.
-        # But `app.dependency_overrides` is global.
-        # Fortunately `get_test_db_override` creates a NEW session each time validly.
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             return await ac.post(
                 "/api/enrollments",
@@ -100,8 +106,9 @@ async def test_enrollment_concurrency(
     # Launch all at once
     responses = await asyncio.gather(*[request_enroll(t) for t in tokens])
     
-    # 4. Cleanup Overrides
+    # 4. Cleanup Overrides and Engine
     app.dependency_overrides.clear()
+    await concurrent_engine.dispose()
     
     # 5. Assertions
     success_count = sum(1 for r in responses if r.status_code == 201)
@@ -117,7 +124,7 @@ async def test_enrollment_concurrency(
             print("First response:", responses[0].json())
 
     assert success_count == 1
-    assert conflict_count == 49
+    assert conflict_count == 99
     assert other_count == 0
 
     # 6. Verify DB State
@@ -137,8 +144,4 @@ async def test_enrollment_concurrency(
         await session.execute(
             select(Enrollment).where(Enrollment.course_id == target_course_id)
         )
-        # Delete enrollments, students, course, professor, etc. to be clean?
-        # Or just rely on test DB being trashable.
-        # Since other tests use `db_session` which clears itself, 
-        # and this test created new unique data (ConcurrencyDept), collision is unlikely.
         pass
