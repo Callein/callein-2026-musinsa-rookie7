@@ -1,0 +1,21 @@
+meta {
+  name: create-enrollment
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{BASE_URL}}/enrollments
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{ACCESS}}
+}
+
+body:json {
+  {
+    "course_id": 1
+  }
+}

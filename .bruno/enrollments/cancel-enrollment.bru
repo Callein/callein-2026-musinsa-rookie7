@@ -1,0 +1,15 @@
+meta {
+  name: cancel-enrollment
+  type: http
+  seq: 2
+}
+
+delete {
+  url: {{BASE_URL}}/enrollments/1
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{ACCESS}}
+}
