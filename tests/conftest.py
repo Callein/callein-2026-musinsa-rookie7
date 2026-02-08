@@ -76,7 +76,6 @@ async def test_department(db_session: AsyncSession):
         dept = Department(name="컴퓨터공학과")
         db_session.add(dept)
         await db_session.flush()
-        # No commit here to keep it in transaction
     
     return dept
 
@@ -93,7 +92,7 @@ async def test_student(db_session: AsyncSession, test_department):
         department_id=test_department.id,
     )
     db_session.add(student)
-    await db_session.flush() # flush to get ID
+    await db_session.flush()
     return student
 
 
@@ -125,16 +124,12 @@ async def test_course(db_session: AsyncSession, test_department):
     )
     db_session.add(schedule)
     await db_session.flush()
-    # No commit here either, rely on session rollback
     return course
 
 
 @pytest_asyncio.fixture
 async def auth_headers(client: AsyncClient, test_student, db_session: AsyncSession):
-    # Need to commit student for auth login to work because login starts a new session/request
-    # But wait, test_student is in current session.
-    # The login endpoint will use a separate session via get_db dependency.
-    # So we MUST commit the user creation for it to be visible to the login request.
+    # 로그인 요청은 별도의 세션을 사용하므로, 테스트 학생 데이터를 커밋해야 조회가 가능합니다.
     await db_session.commit()
     
     response = await client.post(

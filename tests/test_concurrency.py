@@ -25,56 +25,8 @@ async def test_enrollment_concurrency(
     students = []
     tokens = []
     
-    # We need to interact with DB directly for setup using test_engine
-    async with AsyncSession(test_engine, expire_on_commit=False) as session:
-        # Update course capacity to 1
-        # Re-fetch course to attach to this session
-        course = await session.get(Course, test_course.id)
-        if not course:
-             # Should not happen if fixtures work, but let's be safe
-             # If test_course came from a rollback session, it might not exist in this new session 
-             # unless test_course fixture committed it.
-             # conftest.py `test_course` uses `db_session` which rolls back.
-             # BUT `test_engine` is shared. 
-             # If `test_course` fixture didn't commit, we won't see it here.
-             # In `conftest.py`, `test_course` fixture does NOT commit at the end (I changed it to flush).
-             # So we might need to recreate data or ensure `test_course` is committed.
-             pass
-
-        # Wait, `test_course` fixture in `conftest.py` uses `db_session`.
-        # `db_session` rolls back at the end of the test function.
-        # But inside the test function, `test_course` exists in `db_session`.
-        # Here we are using `test_engine` to create NEW sessions.
-        # These new sessions will NOT see uncommitted data from `db_session`.
-        
-        # So we MUST commit `test_course` in `db_session` (the fixture one) 
-        # OR we just rely on `db_session` to commit? 
-        # But `db_session` fixture explicitly rolls back.
-        # If we commit in `db_session`, the rollback in fixture teardown might fail or just roll back the empty transaction?
-        # Actually, if we commit, the data is persisted. The teardown `rollback()` will only roll back the *current* transaction.
-        # Data committed *before* that will remain until... when? 
-        # `test_engine` scope is session. It drops all tables at start.
-        # So committed data persists across tests if we are not careful?
-        # No, `db_session` fixture yields a session. Teardown calls `rollback()`.
-        # If we `commit()` inside the test (or fixture), that data is in DB.
-        # `rollback()` only undoes changes since last commit.
-        # So if we commit, we pollute the DB for other tests?
-        # Yes. But `test_engine` fixture creates tables *once* per session.
-        # We should probably truncate tables after each test? `conftest.py` doesn't seem to do that.
-        # It relies on `transaction.rollback()`.
-        # This implies standard tests should NOT commit.
-        
-        # BUT for concurrency test with multiple sessions, we MUST commit data so other sessions can see it.
-        # So for THIS test, we must commit.
-        pass
-
-    # Let's commit the `test_course` and `test_department` so other sessions can see them.
-    # We can do this by using a separate setup or just committing existing fixture objects?
-    # Accessing `db_session` fixture directly in test might verify this.
-    
-    # We'll use a local session to create everything we need, ensuring it's committed.
-    # We won't rely on `test_course` fixture effectively because of the visibility issue.
-    
+    # 별도의 세션을 사용하여 테스트 데이터를 생성을 확실하게 커밋합니다.
+    # (다른 세션에서 조회 가능하도록)
     async with AsyncSession(test_engine, expire_on_commit=False) as session:
         # Create Dept (if not check) - relying on unique constraint might fail if parallel.
         # Just create a new unique dept for this test to be safe.
