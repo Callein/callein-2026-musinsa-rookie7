@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from src.database import engine, Base
 import src.models  # noqa: F401 - ensure models are registered with Base
-from src.routers import health
+from src.routers import auth, health
 
 
 @asynccontextmanager
@@ -29,6 +29,7 @@ app = FastAPI(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
 
 
 if __name__ == "__main__":
