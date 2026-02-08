@@ -1,15 +1,16 @@
 meta {
   name: health
   type: http
-  seq: 1
+  seq: 2
 }
 
 get {
-  url: {{BASE_URL}}/health
+  url: {{HOST}}/health
   body: none
   auth: inherit
 }
 
 settings {
   encodeUrl: true
+  timeout: 0
 }

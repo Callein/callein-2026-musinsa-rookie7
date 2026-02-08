@@ -1,0 +1,16 @@
+meta {
+  name: list-courses
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{BASE_URL}}/courses?page=1&limit=20
+  body: none
+  auth: none
+}
+
+params:query {
+  page: 1
+  limit: 20
+}

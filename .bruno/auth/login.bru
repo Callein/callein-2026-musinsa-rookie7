@@ -1,0 +1,24 @@
+meta {
+  name: login
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{BASE_URL}}/auth/login
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "student_number": "20210001",
+    "password": "password"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setEnvVar("ACCESS", res.body.access_token);
+  }
+}

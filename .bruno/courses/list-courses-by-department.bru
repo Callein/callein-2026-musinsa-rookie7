@@ -1,0 +1,17 @@
+meta {
+  name: list-courses-by-department
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{BASE_URL}}/courses?department_id=1&page=1&limit=20
+  body: none
+  auth: none
+}
+
+params:query {
+  department_id: 1
+  page: 1
+  limit: 20
+}

@@ -1,0 +1,16 @@
+meta {
+  name: list-students
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{BASE_URL}}/students?page=1&limit=20
+  body: none
+  auth: none
+}
+
+params:query {
+  page: 1
+  limit: 20
+}
