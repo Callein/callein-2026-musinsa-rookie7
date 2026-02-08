@@ -12,6 +12,20 @@ router = APIRouter(prefix="/api/auth", tags=["인증"])
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    """
+    사용자 로그인을 처리하고 JWT 액세스 토큰을 발급합니다.
+
+    Args:
+        body (LoginRequest): 학번과 비밀번호
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        LoginResponse: 액세스 토큰
+
+    Raises:
+        HTTPException(401): 인증 실패 (학번 또는 비밀번호 오류)
+    """
+
     result = await db.execute(
         select(Student).where(Student.student_number == body.student_number)
     )

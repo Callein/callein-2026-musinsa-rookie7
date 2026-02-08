@@ -11,7 +11,32 @@ from src.models.enrollment import Enrollment
 async def enroll(
     student_id: int, course_id: int, db: AsyncSession
 ) -> Enrollment:
-    """수강신청을 처리합니다. SELECT FOR UPDATE로 동시성 제어."""
+    """
+    수강신청을 처리합니다.
+
+    `SELECT ... FOR UPDATE`를 사용하여 강좌 레코드에 비관적 락(Pessimistic Lock)을 걸고,
+    동시성 이슈(경쟁 조건)를 방지하며 수강신청을 수행합니다.
+
+    검증 항목:
+    1. 강좌 존재 여부
+    2. 중복 수강 신청 여부
+    3. 정원 초과 여부
+    4. 최대 학점 초과 여부
+    5. 시간표 충돌 여부
+
+    Args:
+        student_id (int): 신청하는 학생의 ID
+        course_id (int): 신청할 강좌의 ID
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        Enrollment: 생성된 수강신청 내역 객체
+
+    Raises:
+        HTTPException(404): 강좌를 찾을 수 없는 경우
+        HTTPException(409): 비즈니스 규칙 위반 (정원, 학점, 시간 등)
+    """
+
 
     course = await db.execute(
         select(Course).where(Course.id == course_id).with_for_update()
@@ -66,7 +91,22 @@ async def enroll(
 async def drop(
     enrollment_id: int, student_id: int, db: AsyncSession
 ) -> None:
-    """수강취소를 처리합니다."""
+    """
+    수강신청을 취소합니다.
+
+    수강 내역을 삭제하고, 해당 강좌의 현재 수강 인원을 1 감소시킵니다.
+    본인의 수강 신청 내역만 취소할 수 있습니다.
+
+    Args:
+        enrollment_id (int): 취소할 수강신청 내역 ID
+        student_id (int): 요청하는 학생의 ID
+        db (AsyncSession): 데이터베이스 세션
+
+    Raises:
+        HTTPException(404): 수강 신청 내역이 없는 경우
+        HTTPException(403): 본인의 수강 신청이 아닌 경우
+    """
+
 
     result = await db.execute(
         select(Enrollment).where(Enrollment.id == enrollment_id)
@@ -97,7 +137,18 @@ async def drop(
 async def _check_schedule_conflict(
     db: AsyncSession, student_id: int, new_course_id: int
 ) -> None:
-    """기존 수강 강좌와 시간표 충돌을 확인합니다."""
+    """
+    신청하려는 강좌가 기존 수강 강좌와 시간이 겹치는지 확인합니다.
+
+    Args:
+        db (AsyncSession): 데이터베이스 세션
+        student_id (int): 학생 ID
+        new_course_id (int): 신청하려는 강좌 ID
+
+    Raises:
+        HTTPException(409): 시간표가 충돌하는 경우
+    """
+
 
     new_schedules = await db.execute(
         select(CourseSchedule).where(CourseSchedule.course_id == new_course_id)

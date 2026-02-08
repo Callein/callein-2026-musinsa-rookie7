@@ -9,6 +9,12 @@ from src.models import Course, CourseSchedule, Enrollment
 async def test_enroll_success(
     client: AsyncClient, auth_headers: dict, test_student, test_course, db_session: AsyncSession
 ):
+    """
+    정상적인 수강신청 요청이 성공해야 합니다.
+    - 201 Created 반환
+    - 데이터베이스에 수강 내역 저장
+    - 강좌의 현재 수강 인원(enrolled) 1 증가
+    """
     response = await client.post(
         "/api/enrollments",
         json={"course_id": test_course.id},
@@ -28,6 +34,9 @@ async def test_enroll_success(
 async def test_enroll_duplicate(
     client: AsyncClient, auth_headers: dict, test_student, test_course
 ):
+    """
+    이미 수강 신청한 강좌를 중복 신청하면 409 Conflict 에러를 반환해야 합니다.
+    """
     await client.post(
         "/api/enrollments",
         json={"course_id": test_course.id},
@@ -46,6 +55,9 @@ async def test_enroll_duplicate(
 async def test_enroll_capacity_full(
     client: AsyncClient, auth_headers: dict, test_student, test_course, db_session: AsyncSession
 ):
+    """
+    강좌 정원이 초과된 경우 409 Conflict 에러를 반환해야 합니다.
+    """
     test_course.enrolled = test_course.capacity
     await db_session.commit()
 
@@ -62,6 +74,10 @@ async def test_enroll_capacity_full(
 async def test_enroll_credit_limit(
     client: AsyncClient, auth_headers: dict, test_student, db_session: AsyncSession
 ):
+    """
+    최대 수강 가능 학점(18학점)을 초과하면 409 Conflict 에러를 반환해야 합니다.
+    (테스트를 위해 6개 과목을 생성하여 18학점을 채운 후 추가 신청 시도)
+    """
     from src.models import Department, Professor
 
     dept = await db_session.get(Department, test_student.department_id)
@@ -121,6 +137,11 @@ async def test_enroll_credit_limit(
 async def test_cancel_enrollment(
     client: AsyncClient, auth_headers: dict, test_student, test_course, db_session: AsyncSession
 ):
+    """
+    수강신청 취소가 정상적으로 처리되어야 합니다.
+    - 204 No Content 반환
+    - 강좌의 현재 수강 인원(enrolled) 1 감소
+    """
     enroll_resp = await client.post(
         "/api/enrollments",
         json={"course_id": test_course.id},
@@ -142,6 +163,9 @@ async def test_cancel_enrollment(
 async def test_get_my_schedule(
     client: AsyncClient, auth_headers: dict, test_student, test_course
 ):
+    """
+    내 시간표 조회 시 신청한 강좌 목록이 반환되어야 합니다.
+    """
     await client.post(
         "/api/enrollments",
         json={"course_id": test_course.id},

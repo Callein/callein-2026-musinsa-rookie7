@@ -21,6 +21,19 @@ async def list_students(
     department_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    학생 목록을 조회합니다.
+
+    Args:
+        page (int): 페이지 번호
+        limit (int): 페이지 당 항목 수
+        department_id (int | None): 학과 ID로 필터링 (선택)
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        PaginatedResponse[StudentResponse]: 페이징된 학생 목록
+    """
+
     query = select(Student).options(selectinload(Student.department))
     count_query = select(func.count()).select_from(Student)
 
@@ -60,6 +73,20 @@ async def list_students(
 
 @router.get("/{student_id}", response_model=StudentDetailResponse)
 async def get_student(student_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    특정 학생의 상세 정보를 조회합니다.
+
+    Args:
+        student_id (int): 학생 ID
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        StudentDetailResponse: 학생 상세 정보
+
+    Raises:
+        HTTPException(404): 학생을 찾을 수 없는 경우
+    """
+
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.department))

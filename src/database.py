@@ -12,5 +12,12 @@ class Base(DeclarativeBase):
 
 
 async def get_db():
+    """
+    비동기 데이터베이스 세션을 생성하여 반환하는 의존성 함수입니다.
+
+    Yields:
+        AsyncSession: SQLAlchemy 비동기 세션
+    """
+
     async with async_session() as session:
         yield session

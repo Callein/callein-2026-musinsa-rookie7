@@ -15,6 +15,8 @@ router = APIRouter(prefix="/api/courses", tags=["강좌"])
 
 
 def _course_to_response(c: Course) -> CourseResponse:
+    """Course 모델 객체를 CourseResponse 스키마로 변환합니다."""
+
     return CourseResponse(
         id=c.id,
         name=c.name,
@@ -43,6 +45,19 @@ async def list_courses(
     department_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    강좌 목록을 조회합니다.
+
+    Args:
+        page (int): 페이지 번호
+        limit (int): 페이지 당 항목 수
+        department_id (int | None): 학과 ID로 필터링 (선택)
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        PaginatedResponse[CourseResponse]: 페이징된 강좌 목록
+    """
+
     query = select(Course).options(
         selectinload(Course.department),
         selectinload(Course.professor),
@@ -74,6 +89,20 @@ async def list_courses(
 
 @router.get("/{course_id}", response_model=CourseDetailResponse)
 async def get_course(course_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    특정 강좌의 상세 정보를 조회합니다.
+
+    Args:
+        course_id (int): 강좌 ID
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        CourseDetailResponse: 강좌 상세 정보
+
+    Raises:
+        HTTPException(404): 강좌를 찾을 수 없는 경우
+    """
+
     result = await db.execute(
         select(Course)
         .options(

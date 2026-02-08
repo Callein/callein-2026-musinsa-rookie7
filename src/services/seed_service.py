@@ -23,7 +23,13 @@ DEFAULT_PASSWORD_HASH = hash_password("password")
 
 
 async def seed_data():
-    """서버 시작 시 초기 데이터를 생성합니다. 멱등성 보장."""
+    """
+    서버 시작 시 초기 데이터를 생성합니다. 
+
+    기존 데이터가 없는 경우에만 학과, 교수, 강좌, 학생 데이터를 생성하며,
+    이를 통해 멱등성(Idempotency)을 보장합니다.
+    """
+
     async with async_session() as session:
         count = await session.scalar(select(func.count()).select_from(Department))
         if count and count > 0:
@@ -48,6 +54,8 @@ async def seed_data():
 
 
 async def _seed_departments(session) -> list[Department]:
+    """학과 데이터를 생성합니다."""
+
     departments = [Department(name=name) for name in DEPARTMENTS]
     session.add_all(departments)
     await session.flush()
@@ -57,6 +65,8 @@ async def _seed_departments(session) -> list[Department]:
 async def _seed_professors(
     session, departments: list[Department], rng: random.Random
 ) -> list[Professor]:
+    """교수 데이터를 생성합니다."""
+
     professors = []
     employee_num = 1000
     used_names: set[str] = set()
@@ -85,6 +95,8 @@ async def _seed_courses(
     professors: list[Professor],
     rng: random.Random,
 ) -> list[Course]:
+    """강좌 및 시간표 데이터를 생성합니다."""
+
     courses = []
     schedules = []
     course_num = 1
@@ -160,6 +172,8 @@ async def _seed_courses(
 async def _seed_students(
     session, departments: list[Department], rng: random.Random
 ) -> list[Student]:
+    """학생 데이터를 생성합니다."""
+
     students = []
     student_num = 20210001
     used_numbers: set[str] = set()
@@ -182,7 +196,7 @@ async def _seed_students(
             )
         )
 
-    # batch insert for performance
+    # 성능을 위해 배치 삽입 사용
     batch_size = 1000
     for i in range(0, len(students), batch_size):
         session.add_all(students[i : i + batch_size])

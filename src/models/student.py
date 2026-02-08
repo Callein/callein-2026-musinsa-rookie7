@@ -5,6 +5,10 @@ from src.database import Base
 
 
 class Student(Base):
+    """
+    학생 정보를 저장하는 모델입니다.
+    """
+
     __tablename__ = "students"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

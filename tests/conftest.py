@@ -14,7 +14,10 @@ TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/cours
 
 @pytest_asyncio.fixture(scope="session")
 async def test_engine():
-    """Create test engine once per session"""
+    """
+    테스트 세션 동안 사용할 비동기 데이터베이스 엔진을 생성합니다.
+    테스트 시작 전 테이블을 생성하고, 종료 후 리소스를 정리합니다.
+    """
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
@@ -35,7 +38,10 @@ async def test_engine():
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
-    """Create a fresh database session for each test with transaction rollback"""
+    """
+    각 테스트 함수마다 새로운 데이터베이스 세션을 생성합니다.
+    테스트 종료 후 트랜잭션을 롤백하여 데이터 격리를 보장합니다.
+    """
     connection = await test_engine.connect()
     transaction = await connection.begin()
 
@@ -65,6 +71,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest_asyncio.fixture
 async def test_department(db_session: AsyncSession):
+    """테스트용 학과 데이터를 생성하거나 조회합니다."""
     from src.models import Department
     from sqlalchemy import select
 
@@ -82,6 +89,7 @@ async def test_department(db_session: AsyncSession):
 
 @pytest_asyncio.fixture
 async def test_student(db_session: AsyncSession, test_department):
+    """테스트용 학생 데이터를 생성합니다."""
     from src.models import Student
 
     student = Student(
@@ -98,6 +106,7 @@ async def test_student(db_session: AsyncSession, test_department):
 
 @pytest_asyncio.fixture
 async def test_course(db_session: AsyncSession, test_department):
+    """테스트용 강좌(교수, 시간표 포함) 데이터를 생성합니다."""
     from src.models import Course, CourseSchedule, Professor
 
     prof = Professor(name="김교수", employee_number="P0001", department_id=test_department.id)
@@ -129,6 +138,7 @@ async def test_course(db_session: AsyncSession, test_department):
 
 @pytest_asyncio.fixture
 async def auth_headers(client: AsyncClient, test_student, db_session: AsyncSession):
+    """테스트 학생으로 로그인하여 인증 헤더를 반환합니다."""
     # 로그인 요청은 별도의 세션을 사용하므로, 테스트 학생 데이터를 커밋해야 조회가 가능합니다.
     await db_session.commit()
     

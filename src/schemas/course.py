@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ScheduleResponse(BaseModel):
+    """시간표 응답 스키마"""
     model_config = ConfigDict(from_attributes=True)
 
     day_of_week: str
@@ -10,6 +11,7 @@ class ScheduleResponse(BaseModel):
 
 
 class CourseResponse(BaseModel):
+    """강좌 정보 응답 스키마"""
     model_config = ConfigDict(from_attributes=True)
 
     id: int

@@ -5,6 +5,13 @@ from src.database import Base
 
 
 class Course(Base):
+    """
+    강좌 정보를 저장하는 모델입니다.
+
+    강좌명, 학점, 정원, 현재 수강인원 등을 관리하며,
+    `enrolled` 필드는 `SELECT FOR UPDATE`와 함께 동시성 제어에 사용됩니다.
+    """
+
     __tablename__ = "courses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

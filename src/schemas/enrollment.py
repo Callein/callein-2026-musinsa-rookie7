@@ -4,10 +4,12 @@ from pydantic import BaseModel, ConfigDict
 
 
 class EnrollmentRequest(BaseModel):
+    """수강신청 요청 스키마"""
     course_id: int
 
 
 class EnrollmentResponse(BaseModel):
+    """수강신청 응답 스키마"""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -19,6 +21,7 @@ class EnrollmentResponse(BaseModel):
 
 
 class ScheduleItemResponse(BaseModel):
+    """시간표 아이템 응답 스키마"""
     course_id: int
     course_name: str
     course_code: str

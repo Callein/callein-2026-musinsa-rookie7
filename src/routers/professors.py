@@ -21,6 +21,19 @@ async def list_professors(
     department_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    교수 목록을 조회합니다.
+
+    Args:
+        page (int): 페이지 번호
+        limit (int): 페이지 당 항목 수
+        department_id (int | None): 학과 ID로 필터링 (선택)
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        PaginatedResponse[ProfessorResponse]: 페이징된 교수 목록
+    """
+
     query = select(Professor).options(selectinload(Professor.department))
     count_query = select(func.count()).select_from(Professor)
 
@@ -59,6 +72,20 @@ async def list_professors(
 
 @router.get("/{professor_id}", response_model=ProfessorDetailResponse)
 async def get_professor(professor_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    특정 교수의 상세 정보를 조회합니다.
+
+    Args:
+        professor_id (int): 교수 ID
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        ProfessorDetailResponse: 교수 상세 정보
+
+    Raises:
+        HTTPException(404): 교수를 찾을 수 없는 경우
+    """
+
     result = await db.execute(
         select(Professor)
         .options(selectinload(Professor.department))

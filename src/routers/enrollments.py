@@ -30,6 +30,18 @@ async def create_enrollment(
     student: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    수강신청을 요청합니다.
+
+    Args:
+        body (EnrollmentRequest): 신청할 강좌 ID
+        student (Student): 현재 로그인된 학생 (Dependency)
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        SingleResponse[EnrollmentResponse]: 생성된 수강신청 정보
+    """
+
     enrollment = await enrollment_service.enroll(student.id, body.course_id, db)
     await db.commit()
     await db.refresh(enrollment)
@@ -57,6 +69,15 @@ async def cancel_enrollment(
     student: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    수강신청을 취소합니다.
+
+    Args:
+        enrollment_id (int): 취소할 수강신청 ID
+        student (Student): 현재 로그인된 학생
+        db (AsyncSession): 데이터베이스 세션
+    """
+
     await enrollment_service.drop(enrollment_id, student.id, db)
     await db.commit()
 
@@ -66,6 +87,19 @@ async def get_my_schedule(
     student: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    내 시간표를 조회합니다.
+
+    수강 신청한 강좌들의 시간표를 요일, 시간 순으로 정렬하여 반환합니다.
+
+    Args:
+        student (Student): 현재 로그인된 학생
+        db (AsyncSession): 데이터베이스 세션
+
+    Returns:
+        SingleResponse[list[ScheduleItemResponse]]: 정렬된 시간표 목록
+    """
+
     result = await db.execute(
         select(Enrollment)
         .options(

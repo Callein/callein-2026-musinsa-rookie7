@@ -7,6 +7,12 @@ from src.database import Base
 
 
 class Enrollment(Base):
+    """
+    수강신청 내역을 저장하는 모델입니다.
+
+    학생과 강좌의 N:M 관계를 연결하며, Unique Constraint를 통해 중복 신청을 방지합니다.
+    """
+
     __tablename__ = "enrollments"
     __table_args__ = (
         UniqueConstraint("student_id", "course_id", name="uq_student_course"),

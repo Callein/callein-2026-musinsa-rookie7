@@ -5,6 +5,12 @@ from src.database import Base
 
 
 class CourseSchedule(Base):
+    """
+    강좌의 시간표 정보를 저장하는 모델입니다.
+
+    요일(day_of_week)과 시작/종료 시간을 저장하여 시간표 충돌 확인에 사용됩니다.
+    """
+
     __tablename__ = "course_schedules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
