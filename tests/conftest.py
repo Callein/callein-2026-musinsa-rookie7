@@ -1,10 +1,9 @@
-import asyncio
 from typing import AsyncGenerator
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, AsyncEngine
+from sqlalchemy.pool import NullPool
 
 from src.database import Base, get_db
 from src.main import app
@@ -12,26 +11,43 @@ from src.services.auth_service import hash_password
 
 TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/course_registration_test"
 
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-test_async_session = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
+@pytest_asyncio.fixture(scope="session")
+async def test_engine():
+    """Create test engine once per session"""
+    engine = create_async_engine(
+        TEST_DATABASE_URL,
+        echo=False,
+        poolclass=NullPool,  # No connection pooling for tests
+        future=True
+    )
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    async with test_engine.begin() as conn:
+    # Create all tables once
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-    async with test_async_session() as session:
-        yield session
-        await session.rollback()
+    yield engine
+
+    # Cleanup
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
+    """Create a fresh database session for each test with transaction rollback"""
+    connection = await test_engine.connect()
+    transaction = await connection.begin()
+
+    # Create session bound to this connection
+    session = AsyncSession(bind=connection, expire_on_commit=False)
+
+    yield session
+
+    # Rollback to undo all test changes
+    await session.close()
+    await transaction.rollback()
+    await connection.close()
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -48,34 +64,44 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest_asyncio.fixture
-async def test_student(db_session: AsyncSession):
-    from src.models import Department, Student
+async def test_department(db_session: AsyncSession):
+    from src.models import Department
+    from sqlalchemy import select
 
-    dept = Department(name="컴퓨터공학과")
-    db_session.add(dept)
-    await db_session.flush()
+    # Check if department already exists (in case of parallel tests or reused DB)
+    result = await db_session.execute(select(Department).where(Department.name == "컴퓨터공학과"))
+    dept = result.scalar_one_or_none()
+
+    if not dept:
+        dept = Department(name="컴퓨터공학과")
+        db_session.add(dept)
+        await db_session.flush()
+        # No commit here to keep it in transaction
+    
+    return dept
+
+
+@pytest_asyncio.fixture
+async def test_student(db_session: AsyncSession, test_department):
+    from src.models import Student
 
     student = Student(
         name="테스트학생",
         student_number="20240001",
         password_hash=hash_password("password"),
         year=1,
-        department_id=dept.id,
+        department_id=test_department.id,
     )
     db_session.add(student)
-    await db_session.commit()
+    await db_session.flush() # flush to get ID
     return student
 
 
 @pytest_asyncio.fixture
-async def test_course(db_session: AsyncSession):
-    from src.models import Course, CourseSchedule, Department, Professor
+async def test_course(db_session: AsyncSession, test_department):
+    from src.models import Course, CourseSchedule, Professor
 
-    dept = Department(name="컴퓨터공학과")
-    db_session.add(dept)
-    await db_session.flush()
-
-    prof = Professor(name="김교수", employee_number="P0001", department_id=dept.id)
+    prof = Professor(name="김교수", employee_number="P0001", department_id=test_department.id)
     db_session.add(prof)
     await db_session.flush()
 
@@ -85,7 +111,7 @@ async def test_course(db_session: AsyncSession):
         credits=3,
         capacity=30,
         enrolled=0,
-        department_id=dept.id,
+        department_id=test_department.id,
         professor_id=prof.id,
     )
     db_session.add(course)
@@ -98,12 +124,19 @@ async def test_course(db_session: AsyncSession):
         end_time="10:15",
     )
     db_session.add(schedule)
-    await db_session.commit()
+    await db_session.flush()
+    # No commit here either, rely on session rollback
     return course
 
 
 @pytest_asyncio.fixture
-async def auth_headers(client: AsyncClient, test_student):
+async def auth_headers(client: AsyncClient, test_student, db_session: AsyncSession):
+    # Need to commit student for auth login to work because login starts a new session/request
+    # But wait, test_student is in current session.
+    # The login endpoint will use a separate session via get_db dependency.
+    # So we MUST commit the user creation for it to be visible to the login request.
+    await db_session.commit()
+    
     response = await client.post(
         "/api/auth/login",
         json={"student_number": "20240001", "password": "password"},
