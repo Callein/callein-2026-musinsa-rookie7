@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "callein-2026-musinsa-rookie7",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}
