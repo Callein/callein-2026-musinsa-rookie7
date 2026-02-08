@@ -2,6 +2,11 @@
 
 > 이 문서는 대학교 수강신청 시스템 개발 과정에서 Claude Code와 나눈 대화를 정리한 것입니다.
 > 주요 의사결정 사항, 프롬프트, 그리고 AI의 제안에 대한 피드백을 시간순으로 기록합니다.
+> 정리에는 다음 프롬프트가 사용되었습니다.
+```
+지금까지 우리가 나눈 대화 내용, 특히 주요 의사결정 사항과 내가 입력한 프롬프트들을 정리해서 'prompts/transcript.md' 파일로 만들어줘.
+평가자가 볼 수 있도록 가독성 좋게 정리해줘.
+```
 
 ---
 
@@ -205,3 +210,54 @@ FastAPI 실행해서 테스트 하면서 진행하고싶어.
 | 6 | 시드 멱등성 | COUNT 체크 후 스킵 | 서버 재시작 시 중복 생성 방지 |
 | 7 | 커밋 전략 | 관심사별 즉시 커밋 | Git 이력 가독성, Phase별 브랜치 |
 | 8 | 응답 포맷 | 통일된 { success, data, meta } | 프론트엔드 일관된 파싱 |
+ㅐ
+---
+
+## 8. Phase 5: 수강신청/취소 핵심 로직 구현
+
+### 프롬프트 #13: 실시간 테스트와 Bruno 업데이트 지시
+
+```
+FastAPI 실행해서 테스트 하면서 진행하고싶어.
+브루노 테스트도 라우터 만들거나 API 테스트 할 때 업데이트 해야하는게 있으면 그때그때 업데이트 해줘.
+```
+
+**구현 사항**:
+- `enrollment_service.py`: `SELECT FOR UPDATE`로 course 행 잠금, 비즈니스 규칙 검증
+- 정원/학점/시간충돌/중복 체크 후 409 Conflict 반환
+- `enrollments.py` 라우터: POST/DELETE/GET 엔드포인트, JWT 인증 필수
+- Bruno 컬렉션: `.bruno/enrollments/` 폴더에 create/cancel/schedule 요청 추가
+
+**실시간 테스트 결과**:
+- ✅ 수강신청: 201 Created, enrollment ID와 강좌 정보 반환
+- ✅ 중복 신청: 409 Conflict "이미 수강 신청한 강좌입니다."
+- ✅ 시간표 조회: 요일 순으로 정렬된 개인 시간표 반환
+- ✅ 수강취소: 204 No Content
+
+### 프롬프트 #14: Transcript 문서화 및 지속 업데이트 요청
+
+```
+처음부터 지금까지 내가 너랑 대화한거 정리해서
+prompts/claude_code_transcript.md 파일로 만들어줘.
+평가자가 볼 수 있도록 가독성 좋게 정리해줘.
+진행하자. 나랑 대화가 오갈때마다 prompts/claude_code_transcript.md 업데이트 해주면좋겠어.
+```
+
+**반영**: 모든 프롬프트와 의사결정을 시간순으로 정리한 Transcript 문서 생성. 이후 대화마다 실시간 업데이트.
+
+---
+
+## 진행 상황 (2026-02-08 현재)
+
+### 완료된 Phase
+
+- ✅ **Phase 1**: 프로젝트 초기화 (Docker, requirements, health endpoint)
+- ✅ **Phase 2**: 모델 + 데이터 시드 (10,000명 학생, 500개 강좌, 멱등성 보장)
+- ✅ **Phase 3**: JWT 인증 (로그인, 토큰 발급)
+- ✅ **Phase 4**: 조회 API (학생/강좌/교수 목록·상세, 페이지네이션)
+- ✅ **Phase 5**: 수강신청/취소 (SELECT FOR UPDATE 동시성 제어)
+
+### 남은 Phase
+
+- ⏳ **Phase 6**: 테스트 (pytest, 동시성 테스트 100 concurrent requests)
+- ⏳ **Phase 7**: 문서 + Bruno (API.md, README.md 완성)
