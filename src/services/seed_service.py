@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 from src.services.auth_service import hash_password
 
+# 테스트 편의성을 위해 모든 사용자의 비밀번호를 "password"로 통일합니다.
 DEFAULT_PASSWORD_HASH = hash_password("password")
 
 
