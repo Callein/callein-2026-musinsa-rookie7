@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest:*)", "Bash(python -m pytest:*)",
+      "Bash(pip install:*)", "Bash(poetry:*)",
+      "Bash(python:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run test:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(**/*credentials*)",
+      "Bash(rm -rf:*)"
+    ]
+  }
+}
