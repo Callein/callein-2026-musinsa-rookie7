@@ -94,7 +94,7 @@ Serializable까지 올릴 필요가 있는지 논의했습니다. 결론은 **Re
 │ TX-A: SELECT ... FOR UPDATE         │  ← 행 잠금 획득
 │ TX-B: SELECT ... FOR UPDATE         │  ← TX-A 완료까지 대기
 │ TX-A: UPDATE + COMMIT               │  ← 잠금 해제
-│ TX-B: 최신 데이터로 읽기 → 검증    │  ← 정원 초과 시 즉시 실패
+│ TX-B: 최신 데이터로 읽기 → 검증          │  ← 정원 초과 시 즉시 실패
 └─────────────────────────────────────┘
 ```
 
@@ -209,7 +209,45 @@ assert len(conflicts) == 99  # 나머지 99명은 충돌
 10,000명의 비밀번호를 bcrypt로 해싱하는 것은 시드 데이터 생성 시간의 상당 부분을 차지합니다. 운영 환경에서는 적절하지만, 테스트 데이터 생성에서는 해시 라운드를 낮추는 것이 합리적일 수 있습니다.
 
 **커버리지 58%:**
-목표는 80%였으나, 시드 서비스(0%)와 일부 라우터 엣지 케이스가 미달입니다. 핵심 경로(인증, 수강신청, 동시성)는 테스트되었으나, 시간표 충돌의 다양한 조합이나 페이지네이션 경계값 테스트가 부족합니다.
+목표는 80%였으나 달성하지 못했습니다. 파일별 커버리지 리포트를 기준으로 정확한 원인을 분석하면 다음과 같습니다.
+
+```
+Name                               Cover   Missing
+--------------------------------------------------
+enrollment_service.py               25%   44-88, 114-134, 156-181
+seed_service.py                      0%   1-214 (전체)
+seed_data.py                         0%   5-106 (전체)
+routers/professors.py               47%   37-62, 89-100
+routers/students.py                 47%   37-63, 90-101
+routers/courses.py                  48%   20, 61-79, 106-121
+routers/enrollments.py              65%   46-54, 82, 111-117, 136
+dependencies.py                     70%   37-38, 44-50
+```
+
+**구조적 미달 원인:**
+
+`enrollment_service.py`가 가장 큰 병목입니다. `enroll()`, `cancel()`, `get_schedule()`의 핵심 비즈니스 로직 전체가 미커버 상태입니다. 현재 통합 테스트가 라우터를 통해 내려오는 경로만 검증하는데, 정상 케이스 위주로 작성되어 비즈니스 규칙 분기(학점 초과, 시간표 충돌, 정원 초과의 경계값)를 타지 못하고 있습니다.
+
+`seed_service.py`는 구조적으로 커버가 불가능합니다. 서버 시작 시 멱등성 체크(departments 레코드 존재 확인)에서 이미 스킵되므로, 테스트 환경에서는 실행 경로 자체에 진입하지 않습니다. 이를 테스트하려면 별도의 빈 DB 픽스처가 필요합니다.
+
+`routers/professors.py`, `students.py`, `courses.py`는 페이지네이션 파라미터 조합(`page`, `limit` 경계값)과 존재하지 않는 리소스 조회(404) 케이스가 없습니다.
+
+`dependencies.py`의 미달 라인은 JWT 인증 실패 분기입니다. 만료된 토큰, 서명이 잘못된 토큰, DB에 존재하지 않는 학번의 토큰을 각각 테스트해야 커버됩니다.
+
+**80% 달성을 위한 추가 커버리지 계산:**
+
+```
+현재: 569 statements 중 330 covered (58%)
+목표: 569 * 0.80 = 456 covered → 126줄 추가 필요
+```
+
+우선순위별 추가 테스트 케이스:
+1. `enrollment_service.py` — 시간표 충돌(완전 겹침/부분 겹침/맞닿는 경우), 학점 초과, 정원 초과 경계값 (약 40줄)
+2. `routers/professors.py`, `students.py` — 페이지네이션 + 404 케이스 (약 34줄)
+3. `dependencies.py` — 만료/잘못된 JWT 케이스 (약 6줄)
+4. `routers/courses.py` — 필터 파라미터 조합 (약 17줄)
+
+시간 제약 내에서 핵심 경로(인증, 수강신청 CRUD, 100명 동시성)는 모두 검증했으나, 위의 엣지 케이스들이 남은 과제입니다.
 
 ### 6.2 시간이 더 있었다면
 
@@ -224,9 +262,108 @@ assert len(conflicts) == 99  # 나머지 99명은 충돌
 - 커넥션 풀 크기에 대한 부하 테스트 기반 튜닝
 
 **테스트 강화:**
-- Property-based testing으로 시간표 충돌 로직의 모든 엣지 케이스 커버
-- k6 또는 Locust를 활용한 1,000명 이상의 부하 테스트
-- Chaos engineering: DB 커넥션 끊김, 네트워크 지연 시나리오
+
+**(1) Property-based testing으로 시간표 충돌 로직 완전 검증**
+
+현재 `test_enrollments.py`는 시나리오를 손으로 나열합니다(완전 겹침, 부분 겹침, 맞닿는 경우). 하지만 시간표 충돌 함수 `has_schedule_conflict(a_start, a_end, b_start, b_end)`가 정의역 전체에서 성립하는지는 증명하지 못합니다. Hypothesis 라이브러리로 이를 보완할 수 있습니다:
+
+```python
+from hypothesis import given, assume, settings
+from hypothesis import strategies as st
+
+@given(
+    a_start=st.integers(min_value=0, max_value=23),
+    a_end=st.integers(min_value=1, max_value=24),
+    b_start=st.integers(min_value=0, max_value=23),
+    b_end=st.integers(min_value=1, max_value=24),
+)
+def test_conflict_symmetry(a_start, a_end, b_start, b_end):
+    """충돌 여부는 교환법칙이 성립해야 한다."""
+    assume(a_start < a_end and b_start < b_end)
+    assert has_conflict(a_start, a_end, b_start, b_end) == \
+           has_conflict(b_start, b_end, a_start, a_end)
+
+@given(st.integers(0, 23), st.integers(1, 24))
+def test_course_never_conflicts_with_itself(start, end):
+    """자기 자신과는 항상 충돌해야 한다."""
+    assume(start < end)
+    assert has_conflict(start, end, start, end) is True
+```
+
+Hypothesis는 반례를 찾으면 최소 재현 케이스(shrinking)로 자동 축소합니다. 수작업 테스트가 놓치는 경계 조건(off-by-one)을 수천 번의 무작위 시도로 발견합니다.
+
+**(2) 단위 테스트 격리 강화: Testcontainers**
+
+현재 통합 테스트는 `docker compose`로 띄운 DB를 공유합니다. 테스트 간 상태 오염 위험이 있고, 병렬 실행이 불가합니다. Testcontainers를 사용하면 각 테스트 세션이 독립된 PostgreSQL 컨테이너를 사용합니다:
+
+```python
+# conftest.py
+from testcontainers.postgres import PostgresContainer
+
+@pytest.fixture(scope="session")
+def postgres():
+    with PostgresContainer("postgres:16") as pg:
+        yield pg.get_connection_url()
+```
+
+이 방식은 CI/CD 환경에서 `docker compose up` 없이도 완전한 통합 테스트를 실행할 수 있게 합니다.
+
+**(3) Mutation testing으로 테스트 스위트의 품질 검증**
+
+커버리지 58%는 "어느 코드가 실행됐는가"를 측정하지, "테스트가 버그를 잡는가"를 측정하지 않습니다. `mutmut`으로 뮤테이션 테스트를 적용하면 실제 검출력을 측정할 수 있습니다:
+
+```bash
+mutmut run --paths-to-mutate src/services/enrollment_service.py
+mutmut results  # 살아남은 뮤턴트 = 테스트가 잡지 못한 버그
+```
+
+예를 들어 `enrolled_count >= capacity`를 `enrolled_count > capacity`로 바꾼 뮤턴트가 살아남는다면, 정원 정확히 마지막 1자리를 채우는 경계값 테스트가 없다는 뜻입니다.
+
+**(4) 부하 테스트: k6 시나리오 설계**
+
+단순한 동시 요청 100개를 넘어, 실제 수강신청 기간의 트래픽 패턴을 시뮬레이션합니다:
+
+```javascript
+// k6/scenarios/enrollment_rush.js
+export const options = {
+  scenarios: {
+    // 시작 직후 급증 — 인기 강좌 선착순
+    enrollment_rush: {
+      executor: "ramping-vus",
+      startVUs: 0,
+      stages: [
+        { duration: "10s", target: 1000 },  // 10초 만에 1000명
+        { duration: "30s", target: 1000 },  // 30초 유지
+        { duration: "10s", target: 0 },
+      ],
+    },
+    // 잔여 정원 조회 — 읽기 부하
+    course_polling: {
+      executor: "constant-vus",
+      vus: 500,
+      duration: "50s",
+    },
+  },
+  thresholds: {
+    http_req_failed: ["rate<0.01"],          // 오류율 1% 미만
+    http_req_duration: ["p(95)<500"],        // 95th percentile 500ms 이하
+    "checks{type:enrollment}": ["rate>0.99"], // 수강신청 성공 검증 통과율
+  },
+};
+```
+
+성능 회귀 방지를 위해 임계값(threshold)을 CI 파이프라인에 통합합니다. p95 응답 시간이 500ms를 넘으면 빌드를 실패시킵니다.
+
+**(5) Chaos Engineering: 장애 시나리오별 복원력 검증**
+
+| 장애 시나리오 | 주입 방법 | 검증 지표 |
+|---|---|---|
+| DB 커넥션 풀 소진 | `pool_size=1`로 강제 제한 | 409 또는 503 응답, 데이터 정합성 유지 |
+| 네트워크 지연 (500ms) | `tc netem` 또는 Toxiproxy | 응답 시간 분포, 타임아웃 처리 |
+| DB 일시 중단 후 재기동 | `docker pause/unpause postgres` | 재연결 복구 시간, 커넥션 풀 자동 회복 |
+| 부분 트랜잭션 실패 | Mock으로 COMMIT 직전 예외 주입 | 롤백 보장, 부분 쓰기 없음 확인 |
+
+Chaos 테스트의 핵심 검증 조건은 단 하나입니다: **어떤 장애 시나리오에서도 `enrolled_count > capacity`인 레코드가 존재하면 안 됩니다.** 모든 카오스 실험 후 `SELECT course_id, enrolled_count, capacity FROM courses WHERE enrolled_count > capacity`의 결과가 빈 셋임을 확인합니다.
 
 **운영 관측성:**
 - 구조화된 로깅(structured logging)으로 수강신청 흐름 추적
